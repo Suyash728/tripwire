@@ -273,7 +273,7 @@ components:
         args: { type: object, additionalProperties: true }
         ts: { type: string, format: date-time }
         nonce: { type: string }
-        signature: { type: string, description: hex HMAC-SHA256, see AGENTS.md }
+        signature: { type: string, description: "hex HMAC-SHA256, see AGENTS.md" }
     CallResult:
       type: object
       required: [decision, ledger_idx, ms]

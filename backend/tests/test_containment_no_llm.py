@@ -4,7 +4,14 @@ import pathlib
 
 APP = pathlib.Path(__file__).resolve().parents[1] / "app"
 CONTAINMENT = ["gateway", "policy", "ledger", "provenance", "rollback"]
-FORBIDDEN = ("app.services.llm", "services.llm", "openai", "groq", "google.genai", "google.generativeai")
+FORBIDDEN = (
+    "app.services.llm",
+    "services.llm",
+    "openai",
+    "groq",
+    "google.genai",
+    "google.generativeai",
+)
 
 
 def _imports(path: pathlib.Path):
