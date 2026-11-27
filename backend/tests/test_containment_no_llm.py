@@ -1,4 +1,5 @@
 """R6: the containment path must never import the LLM service."""
+
 import ast
 import pathlib
 

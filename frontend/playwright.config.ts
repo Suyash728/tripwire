@@ -20,7 +20,12 @@ export default defineConfig({
       command: `uv run uvicorn app.main:app --port ${API_PORT}`,
       cwd: "../backend",
       url: `${API_URL}/health`,
-      env: { LLM_MOCK: "1", CORS_ORIGINS: UI_URL, RATE_LIMIT: "1000/minute" },
+      env: {
+        LLM_MOCK: "1",
+        CORS_ORIGINS: UI_URL,
+        ALLOWED_ORIGINS: UI_URL,
+        RATE_LIMIT: "1000/minute",
+      },
       reuseExistingServer: false,
       timeout: 60_000,
     },
