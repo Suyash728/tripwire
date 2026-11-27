@@ -6,7 +6,7 @@ dev:
 	bash scripts/dev.sh
 
 mock:
-	npx @stoplight/prism-cli mock openapi.yaml -p 4010
+	npx --yes -p @stoplight/prism-cli -p ajv prism mock openapi.yaml -p 4010
 
 test:
 	cd backend && uv run pytest -q --cov=app
