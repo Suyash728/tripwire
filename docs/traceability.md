@@ -4,8 +4,8 @@ Tick a row only when its test passes and the demo moment works. Commit messages 
 
 | ID | Requirement (source) | Feature | Test | Demo moment | Rubric line | Done |
 |---|---|---|---|---|---|---|
-| R1 | Every action carries an agent identity (abstract) | HMAC-signed agent identity, stamped on each call | pytest: unsigned, forged, stale or reused-nonce call returns 401 | 0-10 s | Auditability | [ ] |
-| R2 | Append-only, hash-chained ledger with before-values (abstract) | `action_ledger`, triggers, `/ledger/verify`, anchor file | pytest: edit a row, verify names the first broken idx; UPDATE/DELETE blocked | 70-80 s | Auditability | [ ] |
+| R1 | Every action carries an agent identity (abstract) | HMAC-signed agent identity, stamped on each call | pytest: unsigned, forged, stale or reused-nonce call returns 401 | 0-10 s | Auditability | [x] |
+| R2 | Append-only, hash-chained ledger with before-values (abstract) | `action_ledger`, triggers, `/ledger/verify`, anchor file | pytest: edit a row, verify names the first broken idx; UPDATE/DELETE blocked | 70-80 s | Auditability | [x] |
 | R3 | Provenance of earlier data used (abstract) | Read stamps, `provenance_edges`, NetworkX closure | pytest: closure on seed case 1 equals the labelled tainted set | 35-55 s | Technical depth | [ ] |
 | R4 | Rule checks: tools, spend limit, tables (abstract) | `R-TOOL`, `R-TABLE`, `R-CALL`, `R-TASK`, `R-HOUR` | pytest: each rule denies; case 3 trips `R-HOUR` | 25-35 s | Survives attack | [ ] |
 | R5 | "Special records" (abstract) | Canary rows, `R-CANARY` | pytest: canary touch trips; no trips on legit seed traffic | 25-35 s | Survives attack | [ ] |
