@@ -1,105 +1,614 @@
 openapi: 3.1.0
 info:
-  title: hackathon-starter
+  title: Tripwire Gateway API
   version: 0.1.0
-  description: Frozen contract. Every response is the envelope {success, data, error}.
+  description: >
+    Contract for the MUST endpoints. Every response uses the envelope
+    {success, data, error}. Frozen: change only with team approval.
+    Run a mock with `make mock` (Prism on :4010).
 servers:
-  - url: http://localhost:8787
+  - url: http://localhost:8080
+  - url: http://localhost:4010
+    description: Prism mock
+security: []
+paths:
+  /gw/call:
+    post:
+      operationId: gatewayCall
+      summary: An agent calls a tool through the gateway
+      description: Verifies identity, applies rules and canaries, appends to the ledger, executes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CallRequest' }
+      responses:
+        '200':
+          description: Call handled (allowed, or denied by rule)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CallResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Denied' }
+        '422': { $ref: '#/components/responses/Invalid' }
+  /ledger:
+    get:
+      operationId: listLedger
+      summary: Ledger entries after an index
+      parameters:
+        - { name: after, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+      responses:
+        '200':
+          description: Entries
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LedgerListResponse' }
+  /ledger/verify:
+    get:
+      operationId: verifyLedger
+      summary: Recompute the hash chain and compare with the anchor file
+      responses:
+        '200':
+          description: Verification result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VerifyResponse' }
+  /agents:
+    get:
+      operationId: listAgents
+      summary: Agents and their status
+      responses:
+        '200':
+          description: Agents
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentListResponse' }
+  /agents/{agentId}/quarantine:
+    post:
+      operationId: quarantineAgent
+      summary: Manual isolate button
+      security: [{ AdminToken: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/AgentId' }
+      responses:
+        '200':
+          description: Agent quarantined
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /incidents/{incidentId}/blast-radius:
+    get:
+      operationId: getBlastRadius
+      summary: Tainted and kept actions, with the kill-everything comparison
+      parameters:
+        - { $ref: '#/components/parameters/IncidentId' }
+      responses:
+        '200':
+          description: Blast radius
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BlastRadiusResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /incidents/{incidentId}/rollback:
+    post:
+      operationId: rollbackIncident
+      summary: Plan or apply the selective rollback
+      security: [{ AdminToken: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/IncidentId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RollbackRequest' }
+      responses:
+        '200':
+          description: Plan or result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RollbackResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Already applied
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorOnlyResponse' }
+  /incidents/{incidentId}/receipt:
+    get:
+      operationId: getReceipt
+      summary: Incident receipt
+      parameters:
+        - { $ref: '#/components/parameters/IncidentId' }
+      responses:
+        '200':
+          description: Receipt
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReceiptResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /demo/load:
+    post:
+      operationId: loadDemo
+      summary: Reset the database to a seed case and start the network
+      security: [{ AdminToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DemoLoadRequest' }
+      responses:
+        '200':
+          description: Seed loaded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DemoLoadResponse' }
+  /demo/inject:
+    post:
+      operationId: injectFault
+      summary: Inject a fault (jury-style drill)
+      security: [{ AdminToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InjectRequest' }
+      responses:
+        '200':
+          description: Fault started
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InjectResponse' }
+        '422': { $ref: '#/components/responses/Invalid' }
+  /demo/tamper:
+    post:
+      operationId: tamperLedgerRow
+      summary: Demo only. Edit a ledger row to show the chain turning red.
+      security: [{ AdminToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TamperRequest' }
+      responses:
+        '200':
+          description: Row edited; run /ledger/verify next
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorOnlyResponse' }
+  /bench/run:
+    post:
+      operationId: runBench
+      summary: Run the bench harness n times on a seed case
+      security: [{ AdminToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BenchRequest' }
+      responses:
+        '200':
+          description: Measured results
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BenchResponse' }
+  /events:
+    get:
+      operationId: streamEvents
+      summary: Server-sent events with trace events
+      description: >
+        text/event-stream. Each event's data is a TraceEvent JSON object. Not wrapped in the envelope.
+      responses:
+        '200':
+          description: Event stream
+          content:
+            text/event-stream:
+              schema: { $ref: '#/components/schemas/TraceEvent' }
 components:
+  securitySchemes:
+    AdminToken:
+      type: apiKey
+      in: header
+      name: X-Admin-Token
+  parameters:
+    AgentId:
+      name: agentId
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/AgentId' }
+    IncidentId:
+      name: incidentId
+      in: path
+      required: true
+      schema: { type: string }
+  responses:
+    Unauthorized:
+      description: Bad or stale signature, or reused nonce
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorOnlyResponse' }
+    Denied:
+      description: Denied by rule or agent quarantined
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/CallResponse' }
+    Invalid:
+      description: Arguments failed validation
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorOnlyResponse' }
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorOnlyResponse' }
   schemas:
-    Envelope:
+    AgentId:
+      type: string
+      enum: [support, refund, inventory, finance]
+    ApiError:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+    ErrorOnlyResponse:
       type: object
       required: [success, data, error]
       properties:
-        success: {type: boolean}
-        data: {}
-        error: {type: [string, "null"]}
-  responses:
-    ValidationError:
-      description: invalid request body (missing field, wrong type, empty or too-long input)
-      content:
-        application/json:
-          schema: {$ref: "#/components/schemas/Envelope"}
-          example: {success: false, data: null, error: "invalid request: input: String should have at least 1 character"}
-    RateLimited:
-      description: too many requests from this client (per-IP limit, env RATE_LIMIT, default 20/minute)
-      content:
-        application/json:
-          schema: {$ref: "#/components/schemas/Envelope"}
-          example: {success: false, data: null, error: "rate limit exceeded: 20 per 1 minute"}
-paths:
-  /health:
-    get:
-      responses:
-        "200":
-          description: up
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/Envelope"}
-              example: {success: true, data: {status: up}, error: null}
-  /samples:
-    get:
-      responses:
-        "200":
-          description: seed cases
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/Envelope"}
-  /runs:
-    post:
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [input]
+        success: { type: boolean }
+        data: { type: ['object', 'null'] }
+        error:
+          oneOf:
+            - { $ref: '#/components/schemas/ApiError' }
+            - { type: 'null' }
+    CallRequest:
+      type: object
+      required: [agent_id, task_id, tool, args, ts, nonce, signature]
+      properties:
+        agent_id: { $ref: '#/components/schemas/AgentId' }
+        task_id: { type: string }
+        tool: { type: string, examples: ['refund.issue'] }
+        args: { type: object, additionalProperties: true }
+        ts: { type: string, format: date-time }
+        nonce: { type: string }
+        signature: { type: string, description: "hex HMAC-SHA256, see AGENTS.md" }
+    CallResult:
+      type: object
+      required: [decision, ledger_idx, ms]
+      properties:
+        decision: { type: string, enum: [allow, deny, quarantined_deny, hold] }
+        ledger_idx: { type: integer }
+        rule_id: { type: ['string', 'null'] }
+        result: { type: ['object', 'null'], additionalProperties: true }
+        ms: { type: number }
+    CallResponse:
+      type: object
+      required: [success, data, error]
+      properties:
+        success: { type: boolean }
+        data:
+          oneOf:
+            - { $ref: '#/components/schemas/CallResult' }
+            - { type: 'null' }
+        error:
+          oneOf:
+            - { $ref: '#/components/schemas/ApiError' }
+            - { type: 'null' }
+    LedgerEntry:
+      type: object
+      required: [idx, ts, agent_id, task_id, tool, kind, decision, args, reads, prev_hash, hash]
+      properties:
+        idx: { type: integer }
+        ts: { type: string, format: date-time }
+        agent_id: { $ref: '#/components/schemas/AgentId' }
+        task_id: { type: string }
+        tool: { type: string }
+        kind: { type: string, enum: [action, rollback] }
+        decision: { type: string }
+        rule_id: { type: ['string', 'null'] }
+        args: { type: object, additionalProperties: true }
+        before_image: { type: ['object', 'null'], additionalProperties: true }
+        after_image: { type: ['object', 'null'], additionalProperties: true }
+        reads:
+          type: array
+          items: { $ref: '#/components/schemas/RecordVersion' }
+        writes:
+          type: array
+          items: { $ref: '#/components/schemas/RecordVersion' }
+        rollback_of: { type: ['integer', 'null'] }
+        prev_hash: { type: string }
+        hash: { type: string }
+    RecordVersion:
+      type: object
+      required: [record, version]
+      properties:
+        record: { type: string, examples: ['refunds:R-1001'] }
+        version: { type: integer }
+    LedgerListResponse:
+      type: object
+      required: [success, data, error]
+      properties:
+        success: { type: boolean }
+        data:
+          oneOf:
+            - type: object
+              required: [entries]
               properties:
-                input: {type: string, minLength: 1, maxLength: 4000}
-                privacy_mode: {type: boolean, default: false}
-      responses:
-        "200":
-          description: run started
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/Envelope"}
-              example: {success: true, data: {run_id: abc123}, error: null}
-        "422": {$ref: "#/components/responses/ValidationError"}
-        "429": {$ref: "#/components/responses/RateLimited"}
-  /runs/{run_id}:
-    get:
-      parameters: [{name: run_id, in: path, required: true, schema: {type: string}}]
-      responses:
-        "200":
-          description: events + state
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/Envelope"}
-  /runs/{run_id}/events:
-    get:
-      parameters: [{name: run_id, in: path, required: true, schema: {type: string}}]
-      responses:
-        "200":
-          description: "SSE stream of {node, status, tier_used, ms}"
-          content:
-            text/event-stream: {}
-  /runs/{run_id}/resume:
-    post:
-      parameters: [{name: run_id, in: path, required: true, schema: {type: string}}]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [approve]
+                entries:
+                  type: array
+                  items: { $ref: '#/components/schemas/LedgerEntry' }
+            - { type: 'null' }
+        error:
+          oneOf:
+            - { $ref: '#/components/schemas/ApiError' }
+            - { type: 'null' }
+    VerifyResult:
+      type: object
+      required: [ok, first_broken_idx, head_hash, anchor_matches]
+      properties:
+        ok: { type: boolean }
+        first_broken_idx: { type: ['integer', 'null'] }
+        head_hash: { type: string }
+        anchor_matches: { type: boolean }
+    VerifyResponse:
+      type: object
+      required: [success, data, error]
+      properties:
+        success: { type: boolean }
+        data:
+          oneOf:
+            - { $ref: '#/components/schemas/VerifyResult' }
+            - { type: 'null' }
+        error:
+          oneOf:
+            - { $ref: '#/components/schemas/ApiError' }
+            - { type: 'null' }
+    Agent:
+      type: object
+      required: [id, name, status]
+      properties:
+        id: { $ref: '#/components/schemas/AgentId' }
+        name: { type: string }
+        status: { type: string, enum: [active, quarantined] }
+        blocked_calls: { type: integer }
+        policy: { type: object, additionalProperties: true }
+    AgentResponse:
+      type: object
+      required: [success, data, error]
+      properties:
+        success: { type: boolean }
+        data:
+          oneOf:
+            - { $ref: '#/components/schemas/Agent' }
+            - { type: 'null' }
+        error:
+          oneOf:
+            - { $ref: '#/components/schemas/ApiError' }
+            - { type: 'null' }
+    AgentListResponse:
+      type: object
+      required: [success, data, error]
+      properties:
+        success: { type: boolean }
+        data:
+          oneOf:
+            - type: object
+              required: [agents]
               properties:
-                approve: {type: boolean}
-      responses:
-        "200":
-          description: resumed
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/Envelope"}
-        "422": {$ref: "#/components/responses/ValidationError"}
-        "429": {$ref: "#/components/responses/RateLimited"}
+                agents:
+                  type: array
+                  items: { $ref: '#/components/schemas/Agent' }
+            - { type: 'null' }
+        error:
+          oneOf:
+            - { $ref: '#/components/schemas/ApiError' }
+            - { type: 'null' }
+    BlastNode:
+      type: object
+      required: [ledger_idx, agent_id, tool, tainted]
+      properties:
+        ledger_idx: { type: integer }
+        agent_id: { $ref: '#/components/schemas/AgentId' }
+        tool: { type: string }
+        tainted: { type: boolean }
+    BlastRadius:
+      type: object
+      required: [incident_id, nodes, edges, tainted_idx, kept_idx, naive_lost_count, tripwire_reversed_count, tripwire_kept_count]
+      properties:
+        incident_id: { type: string }
+        nodes:
+          type: array
+          items: { $ref: '#/components/schemas/BlastNode' }
+        edges:
+          type: array
+          items:
+            type: object
+            required: [from, to]
+            properties:
+              from: { type: integer }
+              to: { type: integer }
+        tainted_idx: { type: array, items: { type: integer } }
+        kept_idx: { type: array, items: { type: integer } }
+        naive_lost_count: { type: integer, description: legit actions lost if everything were rolled back }
+        tripwire_reversed_count: { type: integer }
+        tripwire_kept_count: { type: integer }
+    BlastRadiusResponse:
+      type: object
+      required: [success, data, error]
+      properties:
+        success: { type: boolean }
+        data:
+          oneOf:
+            - { $ref: '#/components/schemas/BlastRadius' }
+            - { type: 'null' }
+        error:
+          oneOf:
+            - { $ref: '#/components/schemas/ApiError' }
+            - { type: 'null' }
+    RollbackRequest:
+      type: object
+      required: [mode]
+      properties:
+        mode: { type: string, enum: [plan, apply] }
+    RollbackStep:
+      type: object
+      required: [order, original_idx, compensating_tool, status]
+      properties:
+        order: { type: integer }
+        original_idx: { type: integer }
+        compensating_tool: { type: string }
+        status: { type: string, enum: [planned, applied, failed] }
+    RollbackResult:
+      type: object
+      required: [mode, steps, applied]
+      properties:
+        mode: { type: string, enum: [plan, apply] }
+        steps:
+          type: array
+          items: { $ref: '#/components/schemas/RollbackStep' }
+        applied: { type: boolean }
+        kept_count: { type: integer }
+    RollbackResponse:
+      type: object
+      required: [success, data, error]
+      properties:
+        success: { type: boolean }
+        data:
+          oneOf:
+            - { $ref: '#/components/schemas/RollbackResult' }
+            - { type: 'null' }
+        error:
+          oneOf:
+            - { $ref: '#/components/schemas/ApiError' }
+            - { type: 'null' }
+    Receipt:
+      type: object
+      required: [incident_id, agent_id, tripped_at, trip_rule_id, containment_ms, reversed, kept_count, blocked_calls, chain_ok]
+      properties:
+        incident_id: { type: string }
+        agent_id: { $ref: '#/components/schemas/AgentId' }
+        tripped_at: { type: string, format: date-time }
+        trip_rule_id: { type: string }
+        containment_ms: { type: number }
+        reversed:
+          type: array
+          items:
+            type: object
+            required: [ledger_idx, tool, amount_inr]
+            properties:
+              ledger_idx: { type: integer }
+              tool: { type: string }
+              amount_inr: { type: ['integer', 'null'] }
+        kept_count: { type: integer }
+        blocked_calls: { type: integer }
+        chain_ok: { type: boolean }
+        narrative: { type: ['string', 'null'] }
+    ReceiptResponse:
+      type: object
+      required: [success, data, error]
+      properties:
+        success: { type: boolean }
+        data:
+          oneOf:
+            - { $ref: '#/components/schemas/Receipt' }
+            - { type: 'null' }
+        error:
+          oneOf:
+            - { $ref: '#/components/schemas/ApiError' }
+            - { type: 'null' }
+    DemoLoadRequest:
+      type: object
+      required: [case]
+      properties:
+        case: { type: integer, enum: [1, 2, 3] }
+        mode: { type: string, enum: [live, scripted], default: scripted }
+    DemoLoadResponse:
+      type: object
+      required: [success, data, error]
+      properties:
+        success: { type: boolean }
+        data:
+          oneOf:
+            - type: object
+              required: [case, mode]
+              properties:
+                case: { type: integer }
+                mode: { type: string }
+            - { type: 'null' }
+        error:
+          oneOf:
+            - { $ref: '#/components/schemas/ApiError' }
+            - { type: 'null' }
+    InjectRequest:
+      type: object
+      required: [fault]
+      properties:
+        fault: { type: string, enum: [injection, canary_read, salami_split] }
+    InjectResponse:
+      type: object
+      required: [success, data, error]
+      properties:
+        success: { type: boolean }
+        data:
+          oneOf:
+            - type: object
+              required: [fault, started_at]
+              properties:
+                fault: { type: string }
+                started_at: { type: string, format: date-time }
+            - { type: 'null' }
+        error:
+          oneOf:
+            - { $ref: '#/components/schemas/ApiError' }
+            - { type: 'null' }
+    TamperRequest:
+      type: object
+      required: [ledger_idx]
+      properties:
+        ledger_idx: { type: integer, minimum: 1 }
+    BenchRequest:
+      type: object
+      required: [case, n]
+      properties:
+        case: { type: integer, enum: [1, 2, 3] }
+        n: { type: integer, minimum: 1, maximum: 100 }
+    BenchResult:
+      type: object
+      required: [n, containment_ms_p50, containment_ms_p95, containment_ms_max, preserved_pct_mean, taint_precision, taint_recall, missing_ledger_entries]
+      properties:
+        n: { type: integer }
+        containment_ms_p50: { type: number }
+        containment_ms_p95: { type: number }
+        containment_ms_max: { type: number }
+        preserved_pct_mean: { type: number }
+        taint_precision: { type: number }
+        taint_recall: { type: number }
+        missing_ledger_entries: { type: integer }
+    BenchResponse:
+      type: object
+      required: [success, data, error]
+      properties:
+        success: { type: boolean }
+        data:
+          oneOf:
+            - { $ref: '#/components/schemas/BenchResult' }
+            - { type: 'null' }
+        error:
+          oneOf:
+            - { $ref: '#/components/schemas/ApiError' }
+            - { type: 'null' }
+    TraceEvent:
+      type: object
+      required: [ts, agent, tool, decision, decider, ms, ledger_idx]
+      properties:
+        ts: { type: string, format: date-time }
+        agent: { $ref: '#/components/schemas/AgentId' }
+        tool: { type: string }
+        decision: { type: string, enum: [allow, deny, quarantined_deny, hold, quarantine, rollback] }
+        decider: { type: string, enum: [rule, canary, human], description: never "model" }
+        rule_id: { type: ['string', 'null'] }
+        ms: { type: number }
+        ledger_idx: { type: integer }
+        hash: { type: string }

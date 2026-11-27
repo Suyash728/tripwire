@@ -1,98 +1,101 @@
-# AGENTS.md — <PROJECT NAME>
-Single rules file for every coding agent (Claude Code via the CLAUDE.md symlink, Antigravity, opencode). Keep < 150 lines.
+# AGENTS.md: Tripwire (SEED Hackathon 2026, Kill Switch track, team Nexus)
 
-## Purpose
-<one line: who, pain, our twist>  ← fill at Gate 3 from the problem statement.
-- MUST: <feature> — <rubric line / Req ID>   (each MUST maps to a row in docs/traceability.md)
-- WON'T: <feature>   (banned until every MUST is demoable)
+Single source of truth for every coding agent. `CLAUDE.md` is a symlink to this file.
+Before any change read: this file, `openapi.yaml`, `agents/graph.md`, `docs/traceability.md`.
+
+## What we build
+Tripwire is a gateway in front of an agent network. Fixed rules and canary records quarantine one
+agent. A provenance graph decides what to roll back. Compensating writes undo only tainted work.
+A receipt proves it. Demo network: Support, Refund, Inventory, Finance agents on a mock D2C store.
 
 ## Commands
-```
-bash scripts/dev.sh                          # API :8787 + UI :3000
-bash scripts/ci-local.sh                     # full local CI, same steps as .github/workflows/ci.yml
-cd backend && uv run ruff check . && uv run ruff format --check .
-cd backend && uv run pytest -q --cov=app --cov-report=term-missing
-cd backend && uv run bandit -q -r app -ll && uv run pip-audit
-cd frontend && npm run lint && npm run typecheck && npm test
-cd frontend && npm run test:e2e              # Playwright demo path + axe scan
-bash scripts/smoke_demo.sh [--privacy]       # MUST pass before every commit; paste raw output
-bash scripts/vllm-up.sh coding|vision|omni|stop|status   # Tier 3 local model (one at a time)
-```
+- `make dev` (or `bash scripts/dev.sh`)      backend API + frontend :3000
+- `make mock`     Prism mock of openapi.yaml on :4010 (`npx @stoplight/prism-cli mock openapi.yaml -p 4010`)
+- `make test`     ruff + pytest --cov + vitest (`cd backend && uv run pytest -q --cov=app` + `cd frontend && npm run test:coverage`)
+- `make e2e`      Playwright demo path + axe (`cd frontend && LLM_MOCK=1 npm run test:e2e`)
+- `make bench`    runs the bench harness, prints JSON (containment ms, preserved %, missing entries)
+- `make lint`     ruff check/format + eslint/prettier
+- `make typecheck` frontend tsc (`cd frontend && npm run typecheck`)
+- `make seed CASE=1`   reset DB to seed case 1, 2 or 3
+- `bash scripts/ci-local.sh`   full local CI suite (same checks CI runs)
 
-## Model policy
-- **Every** LLM call goes through `backend/app/services/llm.py` (`chat()`). No provider SDKs anywhere else.
-- Tier order: Groq -> (429/timeout/error) Gemini Flash-Lite -> (no network / Privacy Mode) local vLLM.
-- If the event has a sponsor model, it becomes Tier 1 when the event says so: add it as a tier in llm.py and to the table below.
-- Model IDs come from env/config (`GROQ_MODEL`, `GEMINI_MODEL`, `VLLM_MODEL`, ...), never hard-coded in routes or agents.
-- `PRIVACY_MODE` (env) or `privacy_mode` (request) forces the local tier only. `LLM_MOCK=1` returns canned replies (tests/CI).
-- VRAM rule: one vLLM model at a time; swap between slices, never during the demo.
+## HARD RULE: no LLM in the containment path
+`app/gateway`, `app/policy`, `app/ledger`, `app/provenance`, `app/rollback` must never import
+`app/services/llm.py`. Tested by `backend/tests/test_containment_no_llm.py`. The LLM is allowed only
+in `app/agents/*` (the demo network) and optionally to phrase the receipt text.
 
-| Tier | Model | Notes |
-|---|---|---|
-| 1 Groq | `openai/gpt-oss-120b` (fast: `openai/gpt-oss-20b`) | 3 s timeout |
-| 1 Groq vision | `qwen/qwen3.8-27b` | Preview — image input only |
-| 2 Gemini | `gemini-3.5-flash-lite` | fallback, 500 req/day free |
-| 2 Gemini hero | `gemini-3.8-flash` | ONE wow call only, 20 req/day free |
-| 3 local | `nvidia/Qwen3-14B-NVFP4` @ `http://localhost:8001/v1` | vision: Qwen2.5-VL-7B-NVFP4; omni: Phi-4-mm-NVFP4 |
-| Embeddings | `gemini-embedding-2` @768 dims, or local `BAAI/bge-m3` | |
-| STT | Groq `whisper-large-v3` | |
+## Model policy (IDs from pins.md, last verified 23 Nov 2026; do not change without asking)
+- Router: `app/services/llm.py`, one OpenAI-compatible client, 3 s timeout per tier.
+- Tier 1 Groq: `openai/gpt-oss-20b` (demo agents). `openai/gpt-oss-120b` only if 20b fails the hijack spike.
+- Tier 2 Gemini: `gemini-3.5-flash-lite` (fallback). `gemini-3.8-flash` ONLY for receipt phrasing (about 20 req/day free).
+- Tier 3 local vLLM `http://localhost:8000/v1`: `nvidia/Qwen3-14B-NVFP4`. One model loaded at a time (16 GB VRAM).
+- Never use: `gemini-2.5-flash`, `gemini-2.5-pro`, `llama-3.1-8b-instant`, `llama-3.3-70b-versatile` (retired).
+- Unsure about an SDK signature: check Context7 or the official docs. Never guess.
 
 ## Architecture map
-- `backend/app/main.py` — FastAPI routes; envelope `{success, data, error}` on every response (errors too)
-- `backend/app/services/llm.py` — the only place model calls happen (3-tier router, cache, mock)
-- `backend/app/services/trace.py` — per-run events -> SSE `GET /runs/{id}/events`
-- `backend/app/services/store.py` — run persistence: memory by default; Supabase (RLS, caller's JWT) when configured · `supabase/` — config, migrations, pgTAP RLS tests (docs/SUPABASE.md)
-- `backend/app/agents/graph.py` — LangGraph (spec: `agents/graph.md`); `crew.py` optional CrewAI (`uv sync --extra crew`)
-- `backend/app/seed.py` — sample cases for "Load sample case"; `backend/tests/` — pytest (no real providers)
-- `frontend/src/app/page.tsx` — main screen; `frontend/src/components/` — UI (TracePanel); `frontend/e2e/` — Playwright
-- `agents/` — agent specs · `n8n/` — workflow exports · `scripts/` — dev, smoke, CI, tunnel, vLLM, event MCP
-- `docs/` — traceability.md, TOOLKIT.md, SUPABASE.md · `openapi.yaml` — frozen API contract (Prism mock: `npx @stoplight/prism-cli mock openapi.yaml -p 4010`)
+- `backend/app/api/`         FastAPI routes, response envelope
+- `backend/app/gateway/`     identity check, call handling, executor
+- `backend/app/policy/`      per-agent rules, cumulative caps, canary check
+- `backend/app/ledger/`      append-only hash chain, anchor file, verify
+- `backend/app/provenance/`  read stamps, edges, NetworkX blast radius
+- `backend/app/rollback/`    tool inverse registry, plan and apply, receipt
+- `backend/app/agents/`      demo network (live LLM + scripted mode), tool definitions
+- `backend/app/bench/`       bench harness and ground-truth metrics
+- `backend/app/services/`    llm.py router, supabase client
+- `frontend/`                Next.js 14 console (feed, agent cards, graph, receipt, trace panel)
+- `db/schema.sql`            tables, triggers, RLS (apply as a migration)
+- `seed/`                    seed cases 1-3 with ground-truth labels
 
-## Conventions
-- Response envelope `{success, data, error}` for every route, including 4xx/5xx.
-- Pydantic model (with length/size limits) on every request body; TS types (or zod) for every API response on the frontend.
-- Typed code: TS strict, Python type hints on public functions. Small functions, feature folders, no dead code, no TODOs on the demo path.
+## Response envelope (every endpoint)
+`{ "success": bool, "data": object | null, "error": { "code": str, "message": str } | null }`
 
-## Security
-- No secrets client-side: only `NEXT_PUBLIC_*` values that are safe to publish. No `dangerouslySetInnerHTML`.
-- CORS from `CORS_ORIGINS` (never `*` in prod). Rate limits on LLM routes. Validate and size-limit inputs and uploads.
-- Prompt-injection guard: system/user message separation, tool allowlist, schema-validated LLM output before acting.
-- No PII or secrets in logs or trace events. Supabase RLS on every user table. Security headers on API and UI.
+## Domain invariants (do not break)
+- Ledger is append-only. `hash = sha256(prev_hash + canonical_json(entry))`. Genesis prev_hash = 64 zeros.
+- Appends are serialised with a Postgres advisory lock; `idx` is app-assigned, gapless, starts at 1.
+- After each append write the head hash to `ANCHOR_LOG_PATH` (outside the DB).
+- Agent identity: HMAC-SHA256 over `agent_id|task_id|tool|canonical(args)|ts|nonce`, per-agent secret. Reject stale ts (>30 s) and reused nonces.
+- Reads through the gateway return `{record, version}`; the read set is stamped per `task_id`.
+- Taint seed = writes by the tripping agent within the tripping call's `task_id`. Spread is by data: a write is tainted if its read set contains a version produced by a tainted write.
+- Rollback = compensating tool calls in descending ledger idx. Each rollback step is itself ledgered (`kind=rollback`, `rollback_of=idx`).
+- Replay oracle: DB state after rollback must equal a replay of legit-only actions.
+- Irreversible tools never auto-run for a quarantined agent; they are denied.
+- Default deny: a tool or table not in the agent's policy is denied.
 
-## Accessibility (target WCAG 2.2 AA)
-Semantic HTML and landmarks, a label for every control, contrast >= 4.5:1, full keyboard path, visible focus,
-`aria-live` for streamed AI output and status changes. axe scan must report no serious/critical violations.
+## Metric definitions (bench)
+- Containment ms = time quarantine applied minus time the first malicious call was received.
+- Preserved % = legit actions kept / legit actions total (ground truth from `seed/`).
+- Taint precision and recall are reported against ground-truth labels.
+- Missing ledger entries = calls received minus ledger rows; must be 0.
+- Report the measured numbers honestly even when below target (targets: under 2 s, at least 75%).
 
-## Efficiency
-Async I/O on network calls, TTL cache on LLM/external calls, stream long responses, DB indexes + pagination on lists.
+## UI test IDs (contract for Playwright)
+`agent-support`, `agent-refund`, `agent-inventory`, `agent-finance`, `stopwatch`, `chain-status`,
+`ledger-row-<idx>`, `blast-graph`, `compare-table`, `receipt`; buttons named "Load sample incident",
+"Apply rollback", "Inject fault", "Tamper with a row".
+
+## MUST scope (frozen at 29 Nov 19:00 IST)
+R1 identity, R2 ledger + hash chain, R3 provenance, R4 rules + cumulative caps, R5 canaries,
+R6 no-LLM containment, R7 quarantine, R8 rollback, R9 receipt, R10 four-agent network,
+R11 minimal console, R12 bench harness, R13 three fault types. See `docs/traceability.md`.
+SHOULD: R14 offline run on local model, R15 irreversible-action hold.
+
+## WON'T (banned until MUST is demoable)
+UPI features, multi-tenant or real auth, real payments, vLLM guard classifier, n8n, LangGraph,
+CrewAI, MCP proxy mode, India-specific features.
+
+## Do not touch without asking
+`openapi.yaml`, `pins` and model IDs, `.env*`, applied migrations, ledger triggers, `main` (PRs only),
+the containment-path import rule, `.claude/hooks/guard.sh`.
 
 ## Definition of Done (every slice)
-- [ ] Works end-to-end on seed data ("Load sample case")
-- [ ] Unit tests incl. at least one edge case; e2e/axe on the demo path
-- [ ] Lint, format and types clean (ruff, eslint, prettier, tsc)
-- [ ] Inputs validated; errors return the envelope
-- [ ] a11y basics + axe clean
-- [ ] Hot path cached or streamed
-- [ ] Requirement IDs ticked in docs/traceability.md
+- [ ] Works end to end on seed data
+- [ ] Slice tests written and passing, with at least one edge case
+- [ ] ruff, prettier/eslint and tsc clean
+- [ ] Inputs validated (Pydantic/zod); no secrets or PII in client or logs
+- [ ] Keyboard-usable, labelled, contrast OK; axe has no serious or critical issues
+- [ ] Hot path (`POST /gw/call`) measured; no N+1 queries
+- [ ] Requirement IDs ticked in `docs/traceability.md`
 - [ ] CI green; commit message names the requirement IDs
 
-## Do-not-touch
-- Never read `.env*` (only `.env.example`). Never push to `main`.
-- Env setup is a human step: agents may not create or copy env files (`cp .env.example .env.local` is blocked).
-- Never edit `openapi.yaml` or change model IDs without asking.
-- Never disable tests, skip checks or lower thresholds (COV_MIN etc.) to make CI pass.
-
-## Rules
-- Vertical slices only (storage -> API/agent -> UI). One slice per session; start a fresh session after each commit (Claude Code: `/clear`; Antigravity/opencode: start a new session).
-- Use the context7 MCP server (configured in all three agents) for any library API you are not certain of.
-- Fix fails twice -> stop and restart the session (Claude Code: `/rewind`), then re-prompt with the triage skill.
-
-## Toolkit (details: docs/TOOLKIT.md)
-- Project skills live in `.agents/skills/` (`.claude/skills` is a symlink):
-  `/newslice N` build one slice · `/triage` failing test, two strikes · `/harden` scope-freeze audit ·
-  `/submitpack` submission artefacts · `/demoprep` before recording/judging · `/agentgraph` LangGraph build.
-- Global skills: frontend-design, web-design-guidelines, vercel-react-best-practices (UI); webapp-testing (browser checks);
-  mcp-builder, skill-creator, find-skills (tooling).
-- MCP = context7 (library docs) + playwright (browser). Add others only if docs/TOOLKIT.md enables them
-  for this event (`scripts/event-mcp.sh`).
-- Prefer CLIs over MCP wrappers: gh, git, supabase, vercel, uv, pytest, npm.
+## Disclosure
+Payments and the store database are mocked and synthetic. Say so in README and `AI_DISCLOSURE.md`.
