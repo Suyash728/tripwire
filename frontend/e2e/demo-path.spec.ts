@@ -11,26 +11,18 @@ async function expectNoSeriousA11yViolations(page: Page) {
   expect(blocking, blocking.join("\n")).toEqual([]);
 }
 
-test("demo path: load sample, run agent, approve, see result — axe clean", async ({ page }) => {
+test("console loads with labelled landmarks and no serious accessibility issues", async ({
+  page,
+}) => {
   await page.goto("/");
-  await expect(page.getByRole("main", { name: "Hackathon starter" })).toBeVisible();
+  await expect(page.getByRole("main", { name: "Tripwire Gateway Console" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tripwire Gateway Console" })).toBeVisible();
+  await expect(page.getByText("SCRIPTED")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Load sample incident" })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "Agent trace" })).toBeVisible();
   await expectNoSeriousA11yViolations(page);
 
-  const loadSample = page.getByRole("button", { name: "Load sample case" });
-  if (await loadSample.isVisible()) {
-    await loadSample.click();
-    await expect(page.getByRole("textbox", { name: "Case description" })).not.toHaveValue("");
-  } else {
-    await page.getByRole("textbox", { name: "Case description" }).fill("Demo input");
-  }
-
-  await page.getByRole("button", { name: "Run agent" }).click();
-  const approve = page.getByRole("button", { name: "Approve" });
-  await expect(approve).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole("complementary", { name: "Agent trace" })).toContainText("planner");
-  await expectNoSeriousA11yViolations(page);
-
-  await approve.click();
-  await expect(page.getByRole("status")).toContainText("action executed", { timeout: 20_000 });
+  await page.getByRole("button", { name: "Load sample incident" }).click();
+  await expect(page.getByTestId("chain-status")).toContainText(/ok|verified/i);
   await expectNoSeriousA11yViolations(page);
 });

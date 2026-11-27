@@ -9,17 +9,37 @@ describe("TracePanel", () => {
     expect(within(panel).getByText("No run yet.")).toBeInTheDocument();
   });
 
-  it("renders one live list item per event with tier and timing", () => {
+  it("renders one live list item per trace event with rule, decider and timing", () => {
     const events: TraceEvent[] = [
-      { node: "planner", status: "done", tier_used: "groq", ms: 120 },
-      { node: "graph", status: "error", tier_used: null, ms: 0, error: "all tiers failed" },
+      {
+        ts: "2026-11-28T10:00:00Z",
+        agent: "refund",
+        tool: "refund.issue",
+        decision: "quarantined_deny",
+        decider: "rule",
+        rule_id: "R-TASK",
+        ms: 4,
+        ledger_idx: 7,
+      },
+      {
+        ts: "2026-11-28T10:00:01Z",
+        agent: "support",
+        tool: "ticket.reply",
+        decision: "allow",
+        decider: "rule",
+        rule_id: null,
+        ms: 12,
+        ledger_idx: 8,
+      },
     ];
     render(<TracePanel events={events} />);
+
     const list = screen.getByRole("list");
     expect(list).toHaveAttribute("aria-live", "polite");
     const items = within(list).getAllByRole("listitem");
     expect(items).toHaveLength(2);
-    expect(items[0]).toHaveTextContent(/planner.*done.*groq.*120 ms/);
-    expect(items[1]).toHaveTextContent("all tiers failed");
+    expect(items[0]).toHaveTextContent(/refund.*refund\.issue.*quarantined_deny.*R-TASK/);
+    expect(items[0]).toHaveTextContent(/decider: rule/);
+    expect(items[1]).toHaveTextContent(/allow.*12 ms/);
   });
 });

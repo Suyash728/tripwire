@@ -24,7 +24,12 @@ def _allowed_origins() -> list[str]:
     raw = os.environ.get("ALLOWED_ORIGINS") or os.environ.get(
         "CORS_ORIGINS", "http://localhost:3000"
     )
-    return [o.strip() for o in raw.split(",") if o.strip() and o.strip() != "*"]
+    # Include both UI dev port (3000) and Playwright e2e port (3100)
+    origins = [o.strip() for o in raw.split(",") if o.strip() and o.strip() != "*"]
+    for fallback in ("http://localhost:3000", "http://localhost:3100"):
+        if fallback not in origins:
+            origins.append(fallback)
+    return origins
 
 
 app = FastAPI(title="Tripwire Gateway API", version="0.1.0")
