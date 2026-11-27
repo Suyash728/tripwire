@@ -19,6 +19,8 @@ from app.gateway.executor import ToolExecutionError, execute_tool
 from app.gateway.identity import IdentityError, verify_call_identity
 from app.ledger.chain import verify_chain
 from app.ledger.repository import get_store
+from app.provenance.graph import compute_blast_radius
+from app.rollback.planner import AlreadyRolledBackError, apply_rollback, get_receipt, plan_rollback
 from app.seed import load_case
 
 router = APIRouter()
@@ -63,6 +65,10 @@ class TamperRequest(BaseModel):
 
 class InjectRequest(BaseModel):
     fault: Literal["injection", "canary_read", "salami_split"]
+
+
+class RollbackRequest(BaseModel):
+    mode: Literal["plan", "apply"]
 
 
 def _execute_gateway_step(
@@ -321,3 +327,73 @@ async def stream_events(once: int = Query(default=0, ge=0, le=1)) -> StreamingRe
             bus.unsubscribe(q)
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
+@router.get("/incidents/{incident_id}/blast-radius")
+async def get_blast_radius(
+    incident_id: str,
+    mode: Literal["scoped", "strict"] = Query(default="scoped"),
+) -> JSONResponse:
+    """Return tainted and kept writes and naive-vs-Tripwire comparison."""
+    res = compute_blast_radius(get_store(), incident_id, mode=mode)
+    if res is None:
+        return JSONResponse(
+            status_code=404,
+            content=envelope(
+                None,
+                success=False,
+                error={"code": "not_found", "message": f"incident {incident_id} not found"},
+            ),
+        )
+    return JSONResponse(status_code=200, content=envelope(res))
+
+
+@router.post("/incidents/{incident_id}/rollback")
+async def rollback_incident(
+    incident_id: str,
+    req: RollbackRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+) -> JSONResponse:
+    """Plan or apply selective compensating rollback for an incident."""
+    _require_admin(x_admin_token)
+    store = get_store()
+    if req.mode == "plan":
+        res = plan_rollback(store, incident_id)
+    else:
+        try:
+            res = apply_rollback(store, incident_id)
+        except AlreadyRolledBackError as exc:
+            return JSONResponse(
+                status_code=409,
+                content=envelope(
+                    None,
+                    success=False,
+                    error={"code": "conflict", "message": str(exc)},
+                ),
+            )
+    if res is None:
+        return JSONResponse(
+            status_code=404,
+            content=envelope(
+                None,
+                success=False,
+                error={"code": "not_found", "message": f"incident {incident_id} not found"},
+            ),
+        )
+    return JSONResponse(status_code=200, content=envelope(res))
+
+
+@router.get("/incidents/{incident_id}/receipt")
+async def get_incident_receipt(incident_id: str) -> JSONResponse:
+    """Return incident receipt with exact DB counts and chain verification."""
+    rec = get_receipt(get_store(), incident_id)
+    if rec is None:
+        return JSONResponse(
+            status_code=404,
+            content=envelope(
+                None,
+                success=False,
+                error={"code": "not_found", "message": f"incident {incident_id} not found"},
+            ),
+        )
+    return JSONResponse(status_code=200, content=envelope(rec))

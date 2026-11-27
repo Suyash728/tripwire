@@ -1059,6 +1059,15 @@
       "task_id": "daily-summary",
       "tool": "refund.read",
       "args": {
+        "id": "R-M1"
+      },
+      "label": "legit"
+    },
+    {
+      "agent_id": "finance",
+      "task_id": "daily-summary",
+      "tool": "refund.read",
+      "args": {
         "id": "R-L1"
       },
       "label": "legit"

@@ -249,7 +249,16 @@ def build_seed_case(case: int) -> dict[str, Any]:
         )
 
         if case == 2:
-            # Legit Finance daily-summary chain reading legit refund after incident
+            # Legit Finance daily-summary reads bogus + legit refunds before booking settlement
+            actions.append(
+                {
+                    "agent_id": "finance",
+                    "task_id": "daily-summary",
+                    "tool": "refund.read",
+                    "args": {"id": "R-M1"},
+                    "label": "legit",
+                }
+            )
             actions.append(
                 {
                     "agent_id": "finance",
