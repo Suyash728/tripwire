@@ -80,9 +80,19 @@ def test_side_by_side_naive_vs_tripwire(client, load_case, call):
     assert blast["tripwire_kept_count"] > blast["naive_lost_count"]
 
 
-def test_offline_local_ai_model_r14(monkeypatch):
+def test_offline_local_ai_model_r14():
     """Test offline inference on local vLLM (R14) using nvidia/Qwen3-14B-NVFP4."""
+    import urllib.error
+    import urllib.request
+
     local_url = os.environ.get("VLLM_BASE_URL", "http://localhost:8001/v1")
+    try:
+        req = urllib.request.Request(f"{local_url}/models")
+        with urllib.request.urlopen(req, timeout=1.0) as resp:
+            pass
+    except Exception:
+        pytest.skip(f"Local vLLM server at {local_url} not reachable, skipping offline test")
+
     client = OpenAI(base_url=local_url, api_key="none", timeout=10.0)
 
     # Local model serves requests offline
