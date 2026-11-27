@@ -1,31 +1,18 @@
-# Security
+# SECURITY.md: threat model for the Tripwire prototype
 
-## Reporting
-Found a vulnerability? Please open a private security advisory on GitHub (Security → Advisories → Report a vulnerability)
-instead of a public issue.
+Tripwire is tamper-evident, not tamper-proof. All data is synthetic and payments are mocked.
 
-## Measures in place
-| Area | Measure | Where |
-|---|---|---|
-| Secrets | Keys live only in `.env` / `.env.local` (git-ignored) and the host's secret store; `.env.example` lists names only | `.gitignore`, `.env.example`, `render.yaml` (`sync: false`) |
-| Secrets in git | gitleaks scan on every push/PR | `.github/workflows/ci.yml` |
-| Client exposure | Only `NEXT_PUBLIC_*` values reach the browser; no keys are `NEXT_PUBLIC_*` | `frontend/` |
-| Input validation | Pydantic models with length limits; invalid bodies return 422 in the envelope | `backend/app/main.py` |
-| CORS | Allowed origins from `CORS_ORIGINS`; localhost default, never `*` | `backend/app/main.py` |
-| Rate limiting | Per-IP limits on LLM routes (429 in the envelope) | `backend/app/main.py` |
-| Security headers | nosniff, Referrer-Policy, frame-ancestors/X-Frame-Options, Permissions-Policy (API + UI); CSP on UI | `backend/app/main.py`, `frontend/next.config.mjs` |
-| LLM safety | All calls via one router; system/user separation; tool allowlist; human approval before irreversible actions | `backend/app/services/llm.py`, `backend/app/agents/graph.py` |
-| Privacy | Privacy Mode routes every model call to a local model; no PII in logs/traces | `llm.py`, `trace.py` |
-| Dependencies | `pip-audit` and `npm audit --audit-level=high` on every CI run (no automated version-bump PRs) | CI |
-| Static analysis | bandit (medium+), ruff, eslint (incl. jsx-a11y) | CI |
-| Agent guardrails | Coding agents may not read `.env*`, push to main or edit the API contract | `.claude/hooks/guard.sh`, `AGENTS.md` |
+| Threat | Where | Mitigation | Residual risk |
+|---|---|---|---|
+| Hostile text in a ticket hijacks an agent | Support to Refund agent | The gateway is the defence: default-deny policies, spend caps and canaries, no LLM in containment | A hijack below every cap goes unnoticed; the receipt shows the cap values |
+| Forged or replayed agent call | `POST /gw/call` | HMAC-SHA256 per-agent secret; reject ts older than 30 s and reused nonces | Shared secrets: use per-agent keypairs in production |
+| Edit of a past ledger row | `action_ledger` | Hash chain, UPDATE/DELETE triggers, `/ledger/verify` | A DB owner can disable the triggers and recompute the chain |
+| Whole-chain rewrite by a DB admin | `action_ledger` | Head hash is also written to `ANCHOR_LOG_PATH` outside the database; verify compares both | The anchor file is only as safe as its host |
+| Hash-chain fork under concurrent writes | Gateway | Postgres advisory lock; app-assigned gapless `idx` | A lock timeout returns an error rather than skipping an entry |
+| Rollback of the wrong rows | Rollback engine | Plan first, one-click apply, replay oracle test | Irreversible actions are marked `manual` |
+| Service-role key leak | Env, client bundle | Key stays server-side; console uses the anon key with read-only RLS; gitleaks in CI | Rotate after the event |
+| Admin endpoints abused | `/demo/*`, `/bench/*`, rollback, quarantine | `X-Admin-Token`; CORS allowlist; rate limit on `/gw/call` | Prototype-grade auth |
+| Prompt injection into receipt phrasing | Optional LLM narrative | Receipt numbers come from the DB; the LLM only phrases them | Phrasing can be wrong; numbers cannot |
+| XSS from ticket text in the console | Next.js UI | React escaping; no `dangerouslySetInnerHTML`; CSP | Third-party packages |
 
-## Threat model (fill per event)
-| Threat | Mitigation | Where |
-|---|---|---|
-| Prompt injection via user input or retrieved content | System/user separation, tool allowlist, schema-validated output, approval interrupt | `llm.py`, `graph.py` |
-| API key leakage | Server-side only, git-ignored env files, gitleaks in CI | CI, `.gitignore` |
-| Abuse / cost blow-up on LLM routes | Rate limit + TTL cache + input size limits | `main.py`, `llm.py` |
-| XSS | React escaping, no `dangerouslySetInnerHTML`, CSP | `frontend/` |
-| Unauthorised data access | RLS on `public.runs` (owner-only policies, `anon` has no grants); backend queries with the caller's JWT, never the secret key | `supabase/migrations/*_runs.sql`, pgTAP: `supabase/tests/rls_runs.test.sql`, `backend/app/services/store.py` |
-| <threat> | <mitigation> | <where> |
+Reporting: open an issue in the repo.

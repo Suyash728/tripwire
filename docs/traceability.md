@@ -1,30 +1,21 @@
-# Traceability
+# docs/traceability.md
 
-Every MUST in AGENTS.md has a row here. `/newslice` ticks rows; `/harden` and `/submitpack` read them.
-Source: **PS-explicit** (stated in the problem statement) · **PS-implicit** (needed to satisfy it) · **User need** (from research/interviews).
-Status: `todo` · `in progress` · `done` (tested + demoable) · `cut` (moved to WON'T).
+Tick a row only when its test passes and the demo moment works. Commit messages name the R-IDs.
 
-| Req ID | Requirement | Source | Feature | Test(s) | Demo moment | Status |
+| ID | Requirement (source) | Feature | Test | Demo moment | Rubric line | Done |
 |---|---|---|---|---|---|---|
-| R1 | <what the user must be able to do> | PS-explicit | <slice / screen> | `backend/tests/test_<x>.py::test_<y>`, `frontend/e2e/<z>.spec.ts` | <mm:ss in demo> | todo |
-| R2 | <...> | PS-implicit | <...> | <...> | <...> | todo |
-| R3 | <...> | User need | <...> | <...> | <...> | todo |
-
-## Non-functional requirements
-| Req ID | Requirement | Evidence | Status |
-|---|---|---|---|
-| NF1 | Works offline (Privacy Mode: local model only) | `bash scripts/smoke_demo.sh --privacy` | todo |
-| NF2 | Accessible (WCAG 2.2 AA target, axe clean) | `frontend/e2e/demo-path.spec.ts` | todo |
-| NF3 | Secure by default (headers, CORS, rate limit, validation) | SECURITY.md, `backend/tests/` | todo |
-| NF4 | CI green (lint, types, tests, coverage, audits) | `.github/workflows/ci.yml` | todo |
-
-## Worked example (template sample case)
-What the template already does, filled in as a reference. Every test cited exists; replace this section with
-your event's rows (or keep R-ex rows that you demo). Vitest tests are cited as `file::"it name"`.
-
-| Req ID | Requirement | Source | Feature | Test(s) | Demo moment | Status |
-|---|---|---|---|---|---|---|
-| R-ex1 | Load a sample case into the input | User need | `GET /samples` + "Load sample case" button (`page.tsx`) | `backend/tests/test_api.py::test_samples_are_seeded`, `frontend/src/app/page.test.tsx::"loads the sample case into the input"`, `frontend/e2e/demo-path.spec.ts` (demo path) | first click of the demo | done |
-| R-ex2 | Run the agent, approve, and watch trace events stream live | PS-implicit | `POST /runs` + SSE `GET /runs/{id}/events` + `TracePanel` | `backend/tests/test_api.py::test_graph_interrupt_and_resume`, `backend/tests/test_api.py::test_graph_reject_cancels_action`, `frontend/src/components/TracePanel.test.tsx::"renders one live list item per event with tier and timing"`, `frontend/e2e/demo-path.spec.ts` (only test that exercises the SSE stream end to end) | run + approve | done |
-| R-ex3 | Privacy Mode forces the local model tier | User need | `privacy_mode` / `PRIVACY_MODE` in `llm.py` | `backend/tests/test_llm.py::test_privacy_mode_never_calls_cloud`, `backend/tests/test_llm.py::test_privacy_mode_env_accepts_truthy_values`, `backend/tests/test_llm.py::test_tier_order_default_and_privacy`; live: `bash scripts/smoke_demo.sh --privacy` | toggle Privacy Mode, trace shows `local` | done |
-| NF-ex | Accessible demo path (WCAG 2.2 AA tags, no serious/critical axe violations) | PS-implicit | labelled landmarks + controls, `aria-live` trace/result | `frontend/e2e/demo-path.spec.ts` (axe at load, after run, after approve), `frontend/src/app/page.test.tsx::"has a labelled main landmark and a labelled case input"`, `frontend/src/components/TracePanel.test.tsx::"shows an empty state inside a labelled complementary landmark"` | whole demo | done |
+| R1 | Every action carries an agent identity (abstract) | HMAC-signed agent identity, stamped on each call | pytest: unsigned, forged, stale or reused-nonce call returns 401 | 0-10 s | Auditability | [ ] |
+| R2 | Append-only, hash-chained ledger with before-values (abstract) | `action_ledger`, triggers, `/ledger/verify`, anchor file | pytest: edit a row, verify names the first broken idx; UPDATE/DELETE blocked | 70-80 s | Auditability | [ ] |
+| R3 | Provenance of earlier data used (abstract) | Read stamps, `provenance_edges`, NetworkX closure | pytest: closure on seed case 1 equals the labelled tainted set | 35-55 s | Technical depth | [ ] |
+| R4 | Rule checks: tools, spend limit, tables (abstract) | `R-TOOL`, `R-TABLE`, `R-CALL`, `R-TASK`, `R-HOUR` | pytest: each rule denies; case 3 trips `R-HOUR` | 25-35 s | Survives attack | [ ] |
+| R5 | "Special records" (abstract) | Canary rows, `R-CANARY` | pytest: canary touch trips; no trips on legit seed traffic | 25-35 s | Survives attack | [ ] |
+| R6 | Containment never depends on an LLM (abstract) | Rule-only containment path | pytest: `test_containment_no_llm.py` | Trace panel (decider = rule) | Auditability | [ ] |
+| R7 | Quarantine one agent, others continue (abstract) | Agent status, `quarantined_deny`, `blocked_calls` | pytest: Refund 403, Support 200 after the trip | 25-35 s | Survives attack | [ ] |
+| R8 | Reverse affected actions in order (abstract) | Rollback plan and apply, compensating tools | pytest: replay oracle (final state equals legit-only replay) | 35-55 s | Technical depth | [ ] |
+| R9 | Report of what happened, reversed, prevented (abstract) | Incident receipt | pytest: receipt counts match the DB | 55-70 s | Auditability | [ ] |
+| R10 | Four-agent demo network (abstract) | Support, Refund, Inventory, Finance; live and scripted | pytest: seed run yields the labelled action counts | 0-10 s | Prototype | [ ] |
+| R11 | Monitoring dashboard (abstract) | Console: feed, agent cards, graph, trace panel | Playwright demo path plus axe | All | Prototype | [ ] |
+| R12 | Contain under 2 s, keep at least 75% of legit work, no missing entries (abstract) | `/bench/run` and `make bench` | bench asserts, 30 runs per case | 80-90 s | Impact | [ ] |
+| R13 | Unseen-fault drill (implicit: jury attack) | "Inject fault": injection, canary_read, salami_split | pytest: each fault trips | 80-90 s | Survives attack | [ ] |
+| R14 | Offline run on a local model (abstract, SHOULD) | Router tier 3 | Wi-Fi-off run, recorded | n/a | Prototype | [ ] |
+| R15 | Hold irreversible actions (innovation, SHOULD) | `hold` decision, human release | pytest: held action does not execute | Receipt | Technical depth | [ ] |

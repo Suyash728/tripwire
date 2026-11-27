@@ -12,3 +12,5 @@ __pycache__/
 .coverage
 coverage.xml
 htmlcov/
+PLAYBOOK.md
+WORKFLOW.md
