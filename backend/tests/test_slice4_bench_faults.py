@@ -85,10 +85,12 @@ def test_offline_local_ai_model_r14():
     import urllib.error
     import urllib.request
 
+    import pytest
+
     local_url = os.environ.get("VLLM_BASE_URL", "http://localhost:8001/v1")
     try:
         req = urllib.request.Request(f"{local_url}/models")
-        with urllib.request.urlopen(req, timeout=1.0) as resp:
+        with urllib.request.urlopen(req, timeout=1.0):
             pass
     except Exception:
         pytest.skip(f"Local vLLM server at {local_url} not reachable, skipping offline test")
