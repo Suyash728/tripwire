@@ -19,7 +19,7 @@ jobs:
           cache-dependency-glob: backend/uv.lock
       - run: uv sync --frozen
       - run: uv run ruff check .
-      - run: uv run pytest -q tests/test_containment_no_llm.py
+      - run: uv run pytest -q tests/test_slice*.py tests/test_containment_no_llm.py
 
   frontend:
     runs-on: ubuntu-latest

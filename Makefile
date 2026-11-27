@@ -26,11 +26,7 @@ ci:
 	bash scripts/ci-local.sh
 
 bench:
-	@if [ -d "backend/app/bench" ]; then \
-		cd backend && uv run python -m app.bench; \
-	else \
-		echo "Bench harness not yet implemented (backend/app/bench/ - requirement R12)"; \
-	fi
+	cd backend && uv run python -m app.bench $(if $(CASE),--case=$(CASE),) $(if $(N),--n=$(N),)
 
 seed:
 	@if [ -f "backend/app/seed.py" ]; then \
