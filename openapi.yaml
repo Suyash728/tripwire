@@ -1,0 +1,105 @@
+openapi: 3.1.0
+info:
+  title: hackathon-starter
+  version: 0.1.0
+  description: Frozen contract. Every response is the envelope {success, data, error}.
+servers:
+  - url: http://localhost:8787
+components:
+  schemas:
+    Envelope:
+      type: object
+      required: [success, data, error]
+      properties:
+        success: {type: boolean}
+        data: {}
+        error: {type: [string, "null"]}
+  responses:
+    ValidationError:
+      description: invalid request body (missing field, wrong type, empty or too-long input)
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Envelope"}
+          example: {success: false, data: null, error: "invalid request: input: String should have at least 1 character"}
+    RateLimited:
+      description: too many requests from this client (per-IP limit, env RATE_LIMIT, default 20/minute)
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Envelope"}
+          example: {success: false, data: null, error: "rate limit exceeded: 20 per 1 minute"}
+paths:
+  /health:
+    get:
+      responses:
+        "200":
+          description: up
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Envelope"}
+              example: {success: true, data: {status: up}, error: null}
+  /samples:
+    get:
+      responses:
+        "200":
+          description: seed cases
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Envelope"}
+  /runs:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [input]
+              properties:
+                input: {type: string, minLength: 1, maxLength: 4000}
+                privacy_mode: {type: boolean, default: false}
+      responses:
+        "200":
+          description: run started
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Envelope"}
+              example: {success: true, data: {run_id: abc123}, error: null}
+        "422": {$ref: "#/components/responses/ValidationError"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+  /runs/{run_id}:
+    get:
+      parameters: [{name: run_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200":
+          description: events + state
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Envelope"}
+  /runs/{run_id}/events:
+    get:
+      parameters: [{name: run_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200":
+          description: "SSE stream of {node, status, tier_used, ms}"
+          content:
+            text/event-stream: {}
+  /runs/{run_id}/resume:
+    post:
+      parameters: [{name: run_id, in: path, required: true, schema: {type: string}}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approve]
+              properties:
+                approve: {type: boolean}
+      responses:
+        "200":
+          description: resumed
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Envelope"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+        "429": {$ref: "#/components/responses/RateLimited"}

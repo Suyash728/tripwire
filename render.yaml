@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: hackathon-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - {key: PYTHON_VERSION, value: "3.12.13"}
+      - {key: GROQ_API_KEY, sync: false}
+      - {key: GEMINI_API_KEY, sync: false}
+      - {key: CORS_ORIGINS, sync: false}
+      - {key: SUPABASE_URL, sync: false}              # optional: persist runs (docs/SUPABASE.md)
+      - {key: SUPABASE_PUBLISHABLE_KEY, sync: false}  # publishable key only; never the secret key

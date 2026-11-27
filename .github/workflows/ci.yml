@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main] # PR branches are covered by pull_request; this avoids running them twice
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# Thresholds a hackathon can trim. Lowering them to make CI pass is banned (AGENTS.md Do-not-touch).
+env:
+  COV_MIN: "60" # backend line coverage %
+  BANDIT_LEVEL: "-ll" # -ll = medium+, -lll = high only
+  NPM_AUDIT_LEVEL: "high"
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "lts/*"
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # On push-to-main runs, actions/checkout leaves the workspace on branch `main`, where the guard
+      # correctly blocks every push (so the "feat/maintenance" case would fail). Point the guard's
+      # current-branch check at a throwaway repo on `ci-test` so all cases run identically on every event.
+      - name: Agent guard hook tests
+        run: |
+          git init -q -b ci-test "$RUNNER_TEMP/guard-repo"
+          CLAUDE_PROJECT_DIR="$RUNNER_TEMP/guard-repo" bash scripts/test-guard.sh
+      - name: Antigravity guard hook tests
+        run: AGY_GUARD_REPO="$RUNNER_TEMP/guard-repo" bash scripts/test-agy-guard.sh
+
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.4.0 # exact tag: setup-uv publishes no floating major tags
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - run: uv sync --frozen
+      - name: Lint + format
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: Tests + coverage
+        run: uv run pytest -q --cov=app --cov-report=term-missing --cov-fail-under=${COV_MIN}
+      - name: Bandit
+        run: uv run bandit -q -r app ${BANDIT_LEVEL}
+      - name: pip-audit
+        run: uv run pip-audit
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run test:coverage
+      - run: npm audit --audit-level=${NPM_AUDIT_LEVEL}
+      - run: npm run build
+
+  e2e-a11y:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    env:
+      LLM_MOCK: "1" # no LLM keys in CI; the router returns canned replies
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.4.0 # exact tag: setup-uv publishes no floating major tags
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: uv sync --frozen
+        working-directory: backend
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - name: Playwright demo path + axe (starts backend + frontend via webServer)
+        run: npm run test:e2e
+        working-directory: frontend
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          retention-days: 7
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # personal repo: no GITLEAKS_LICENSE needed
