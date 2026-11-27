@@ -10,6 +10,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "slowapi>=0.1.10",
     "supabase>=2.34,<3",
+    "networkx>=3.7",
 ]
 
 [project.optional-dependencies]
