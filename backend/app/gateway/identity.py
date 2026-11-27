@@ -43,6 +43,33 @@ def _parse_ts(ts: str) -> float:
     return dt.timestamp()
 
 
+def sign_call(
+    agent_id: str,
+    task_id: str,
+    tool: str,
+    args: dict[str, Any],
+    ts: str | None = None,
+    nonce: str | None = None,
+) -> dict[str, Any]:
+    """Helper to generate an HMAC-SHA256 signed call dictionary for an agent."""
+    import uuid
+
+    ts = ts or datetime.now(UTC).isoformat()
+    nonce = nonce or uuid.uuid4().hex
+    secret = os.environ.get(f"AGENT_SECRET_{agent_id.upper()}", "")
+    msg = f"{agent_id}|{task_id}|{tool}|{canonical_json(args)}|{ts}|{nonce}".encode()
+    sig = hmac.new(secret.encode(), msg, hashlib.sha256).hexdigest()
+    return {
+        "agent_id": agent_id,
+        "task_id": task_id,
+        "tool": tool,
+        "args": args,
+        "ts": ts,
+        "nonce": nonce,
+        "signature": sig,
+    }
+
+
 def verify_call_identity(
     *,
     agent_id: str,

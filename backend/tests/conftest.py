@@ -1,4 +1,5 @@
 """Shared fixtures. Fixtures assume the app exposes `app.main.app` and `app.seed.load_case`."""
+
 import hashlib
 import hmac
 import json
@@ -45,6 +46,7 @@ def sign_call(
 @pytest.fixture(scope="session")
 def client():
     from app.main import app
+
     return TestClient(app)
 
 
@@ -59,6 +61,7 @@ def load_case(client, admin):
         r = client.post("/demo/load", json={"case": case, "mode": mode}, headers=admin)
         assert r.status_code == 200 and r.json()["success"]
         return r.json()["data"]
+
     return _load
 
 
@@ -66,4 +69,5 @@ def load_case(client, admin):
 def call(client):
     def _call(agent_id, task_id, tool, args, **kw):
         return client.post("/gw/call", json=sign_call(agent_id, task_id, tool, args, **kw))
+
     return _call

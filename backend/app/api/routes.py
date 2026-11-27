@@ -14,6 +14,7 @@ from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.bench.harness import run_bench
 from app.gateway.events import get_trace_bus
 from app.gateway.executor import ToolExecutionError, execute_tool
 from app.gateway.identity import IdentityError, verify_call_identity
@@ -61,6 +62,11 @@ class DemoLoadRequest(BaseModel):
 
 class TamperRequest(BaseModel):
     ledger_idx: int = Field(ge=1)
+
+
+class BenchRequest(BaseModel):
+    case: Literal[1, 2, 3]
+    n: int = Field(default=30, ge=1, le=100)
 
 
 class InjectRequest(BaseModel):
@@ -397,3 +403,14 @@ async def get_incident_receipt(incident_id: str) -> JSONResponse:
             ),
         )
     return JSONResponse(status_code=200, content=envelope(rec))
+
+
+@router.post("/bench/run")
+async def bench_run(
+    req: BenchRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+) -> dict[str, Any]:
+    """Run bench harness n times on a seed case and return measured metrics."""
+    _require_admin(x_admin_token)
+    res = run_bench(case_num=req.case, n=req.n)
+    return envelope(res)
